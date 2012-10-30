@@ -1,12 +1,5 @@
 import sys, os, logging, math, time
 
-if sys.version_info >= (3, 0):
-    from urllib.request import Request as request
-    from urllib.request import urlopen
-else:
-    from urllib2 import Request as request
-    from urllib2 import urlopen
-
 if sys.version_info < (2, 7):
     import simplejson as json
 else:
@@ -21,43 +14,6 @@ import re
 def upper(matchobj):
     return matchobj.group(0).upper()
 
-# TODO:
-# - Get filenames from options
-# - Check if they exist
-# - Check if they are not empty
-f1 = open('../config.json', 'r')
-f2 = open('./config.json', 'r')
-
-testsConfigRaw1 = json.load(f1)
-testsConfigRaw2 = json.load(f2)
-
-# Unite our config dictionaries into one
-def dictUnion (d1,d2):
-    res = {}
-    for x in set( list(d1.keys()) + list(d2.keys()) ):
-        if isinstance(d2.get(x),dict):
-            res[x] = dictUnion(d1.get(x,{}),d2[x])
-        else:
-            res[x] = d2.get(x,d1.get(x))
-    return res
-
-testsConfigRaw = dictUnion(testsConfigRaw1, testsConfigRaw2)
-
-testsConfig = {}
-testsConfig['classes'] = {}
-testsConfig['default'] = testsConfigRaw['default']
-
-# Adapt config to Python tests
-for className in testsConfigRaw['classes']:
-    newClassName = 'Test' + className
-    testsConfig['classes'][newClassName] = testsConfigRaw['classes'][className]
-    testsConfig['classes'][newClassName] = {}
-    for methodName in testsConfigRaw['classes'][className]:
-        # Adapt method names from config
-        if methodName != 'default':
-            testsConfig['classes'][newClassName]['test' + re.sub(r'\b\w', upper, methodName)] = testsConfigRaw['classes'][className][methodName]
-        else:
-            testsConfig['classes'][newClassName][methodName] = testsConfigRaw['classes'][className][methodName]
 
 def scoreatpercentile(N, percent, key=lambda x:x):
     """
@@ -105,7 +61,7 @@ def invoker(object, fname, repeats):
 
     return tend - tstart
 
-def benchmark(invocations=0, repeats=0, threads=0):
+def benchmark(invocations=1, repeats=1, threads=1):
     """
     Decorator, that marks test to be executed 'invocations'
     times using number of threads specified in 'threads'.
@@ -119,36 +75,10 @@ def benchmark(invocations=0, repeats=0, threads=0):
         def wrapper(self, *args, **kwargs):
             className = self.__class__.__name__
             methodName = fn.__name__
-
-            paramsTest = {}
-            paramsTest['invocations'] = invocations
-            paramsTest['repeats'] = repeats
-            paramsTest['threads'] = threads
-
-            # Let's look up for config values
-            # If there is no config value we'll use one from params
-            for paramName in paramsTest:
-
-                if paramsTest[paramName] == 0:
-                    # Search in 'default' section
-                    if paramName in testsConfig['default'] and testsConfig['default'][paramName]>0:
-                        paramsTest[paramName] = testsConfig['default'][paramName]
-
-                    # Search in 'default' section of class
-                    if className in testsConfig['classes'] and 'default' in testsConfig['classes'][className] and paramName in testsConfig['classes'][className]['default']:
-                        paramsTest[paramName] = testsConfig['classes'][className]['default'][paramName]
-
-                    # Search in class section
-                    if className in testsConfig['classes'] and methodName in testsConfig['classes'][className] and paramName in testsConfig['classes'][className][methodName] and testsConfig['classes'][className][methodName][paramName]>0:
-                        paramsTest[paramName] = testsConfig['classes'][className][methodName][paramName]
-
-                    # If nothing found before:
-                    if paramsTest[paramName] == 0:
-                        paramsTest[paramName] = 1
-
-            pool = Pool(paramsTest['threads'])
-            for i in range(paramsTest['invocations']):
-                res = pool.apply_async(invoker, args=(self, fn.__name__, paramsTest['repeats']))
+          
+            pool = Pool(threads)
+            for i in range(invocations):
+                res = pool.apply_async(invoker, args=(self, fn.__name__, repeats))
                 # Gather res links
                 resArray.append(res)
 
@@ -162,8 +92,8 @@ def benchmark(invocations=0, repeats=0, threads=0):
             oneTestMeasurements['title'] = methodName
             oneTestMeasurements['class'] = className
             oneTestMeasurements['results'] = timesMeasurements
-            oneTestMeasurements['invocations'] = paramsTest['invocations']
-            oneTestMeasurements['repeats'] = paramsTest['repeats']
+            oneTestMeasurements['invocations'] = invocations
+            oneTestMeasurements['repeats'] = repeats
 
             measurements.append(oneTestMeasurements)
 
@@ -176,22 +106,12 @@ def benchmark(invocations=0, repeats=0, threads=0):
 
 class Benchmark(Plugin):
     name = 'benchmark'
-    postUrl = 'http://still-wildwood-9084.herokuapp.com/send/c6ebcf9ec36d21fbc8aea7d6d26a7411/'
 
     def options(self, parser, env=os.environ):
-        super(Benchmark, self).options(parser, env=env)
-
-        parser.add_option(
-            "--postUrl",
-            default=self.postUrl,
-            dest="postUrl",
-            help="URL to send benchmarks results to"
-        )
-
+        super(Benchmark, self).options(parser, env=env)     
 
     def configure(self, options, conf):
         super(Benchmark, self).configure(options, conf)
-        self.postUrl = options.postUrl
 
         if not self.enabled:
             return
@@ -255,20 +175,5 @@ class Benchmark(Plugin):
 
             # Save the results
             f = open(dir + object.__module__ + '.json', 'w')
-            f.write(resultsToSave)
-
-
-            for performanceResultPost in performanceResultsPost:
-                postData = json.dumps(performanceResultPost)
-                reqHeaders = {
-                    'Content-type': 'application/json',
-                    'Content-Length': str(len(postData))
-                    }
-
-                log.debug('Sending results to: ' + self.postUrl)
-
-                # TODO:
-                # Need some check here
-                req = request(url=self.postUrl, data=postData.encode('UTF-8'), headers=reqHeaders)
-                response = urlopen(req)
+            f.write(resultsToSave)            
 
