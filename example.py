@@ -3,12 +3,12 @@ from benchmark import benchmark
 import random
 
 class Test(object):
-    @benchmark(invocations=10, threads=3)
+    @benchmark(threads=3)
     def testGenerateRandomNumber1(self):
-        for i in range(1000000):
+        for i in range(999999):
             random.random()
 
-    @benchmark(invocations=20, threads=5)
+    @benchmark(threads=5)
     def testGenerateRandomNumber2(self):
-        for i in range(1000000):
+        for i in range(999999):
             random.random()

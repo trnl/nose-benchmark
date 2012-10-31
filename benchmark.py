@@ -1,4 +1,4 @@
-import sys, os, logging, math, time
+import sys, os, logging, math, time, resource
 
 if sys.version_info < (2, 7):
     import simplejson as json
@@ -40,7 +40,6 @@ def scoreatpercentile(N, percent, key=lambda x:x):
 log = logging.getLogger('nose.plugins.benchmark')
 
 measurements = []
-resArray = []
 
 def info(title):
     log.debug('Test name:' + title)
@@ -48,52 +47,57 @@ def info(title):
     log.debug('Process id:' + str(os.getpid()))
 
 
-def invoker(object, fname, repeats):
+def invoker(object, fname):
     info(fname)
-    # TODO:
-    # Counting only CPU time now
-    tstart = time.clock()
+    rusage_mode = resource.RUSAGE_CHILDREN
+    rusage_before = resource.getrusage(rusage_mode)
+    real_before = time.time()
+    
+    # actual run
+    getattr(object,fname)._wrapped(object)
 
-    for i in range(repeats):
-        getattr(object,fname)._wrapped(object)
+    rusage_after = resource.getrusage(rusage_mode)
+    real_after = time.time()
+    
+    fields = filter(lambda item: item.startswith('ru_'), dir(rusage_after))
+    x = dict([(field, getattr(rusage_after, field)-getattr(rusage_before, field)) for field in fields])
+    x['ru_rtime'] = real_after - real_before
+    return x                      
 
-    tend = time.clock()
-
-    return tend - tstart
-
-def benchmark(invocations=1, repeats=1, threads=1):
+def benchmark(rounds=10, warmupRounds=5, threads=1):
     """
-    Decorator, that marks test to be executed 'invocations'
+    Decorator, that marks test to be executed 'rounds'
     times using number of threads specified in 'threads'.
     """
     def decorator(fn):
-        global measurements, resArray
-        resArray = []
-        timesMeasurements = []
+        global measurements
+        ruMeasurements = []
         oneTestMeasurements = {}
 
         def wrapper(self, *args, **kwargs):
             className = self.__class__.__name__
             methodName = fn.__name__
-          
+            
+            # here will be self-calibration
+            
+            promises = []
+            
             pool = Pool(threads)
-            for i in range(invocations):
-                res = pool.apply_async(invoker, args=(self, fn.__name__, repeats))
-                # Gather res links
-                resArray.append(res)
+            for i in range(warmupRounds+rounds):
+                result = pool.apply_async(invoker, args=(self, fn.__name__))
+                if (i > warmupRounds):
+                    promises.append(result)
 
             pool.close()
             pool.join()
 
-            for res in resArray:
+            for promise in promises:
                 # Get the measurements returned by invoker function
-                timesMeasurements.append(res.get())
+                ruMeasurements.append(promise.get())
 
             oneTestMeasurements['title'] = methodName
             oneTestMeasurements['class'] = className
-            oneTestMeasurements['results'] = timesMeasurements
-            oneTestMeasurements['invocations'] = invocations
-            oneTestMeasurements['repeats'] = repeats
+            oneTestMeasurements['results'] = ruMeasurements
 
             measurements.append(oneTestMeasurements)
 
@@ -123,21 +127,21 @@ class Benchmark(Plugin):
         performanceResults = []
 
         for i in range(len(measurements)):
-            performanceResult = {}
+            rounds = len(measurements[i]['results'])
+            iterations = 10
+            
+            averages = {}
+            for field in measurements[i]['results'][0]:
+              averages[field] = sum([x[field] for x in measurements[i]['results']]) / rounds
+            
+            performanceResult = dict(averages)
             performanceResult['title'] = measurements[i]['title']
             performanceResult['class'] = measurements[i]['class']
-            performanceResult['invocations'] = measurements[i]['invocations']
-            performanceResult['repeats'] = measurements[i]['repeats']
-            performanceResult['executionTime'] = sum(measurements[i]['results'])
-            performanceResult['invocations'] = len(measurements[i]['results'])
-            performanceResult['min'] = min(measurements[i]['results'])
-            performanceResult['max'] = max(measurements[i]['results'])
-            performanceResult['average'] = sum(measurements[i]['results']) / len(measurements[i]['results'])
-            performanceResult['median'] = scoreatpercentile(sorted(measurements[i]['results']), 0.5)
-            performanceResult['90percentile'] = scoreatpercentile(sorted(measurements[i]['results']), 0.9)
-
-            if performanceResult['average']>0:
-                performanceResult['operationsPerSecond'] = measurements[i]['repeats']/performanceResult['average']
+            performanceResult['rounds'] = rounds
+            performanceResult['timeReal'] = averages['ru_rtime']
+            performanceResult['timeUser'] = averages['ru_utime']
+            performanceResult['opsReal'] = iterations / performanceResult['timeReal'] if performanceResult['timeReal']>0 else 0
+            performanceResult['opsUser'] = iterations / performanceResult['timeUser'] if performanceResult['timeUser']>0 else 0            
 
             performanceResults.append(performanceResult)
 
@@ -148,26 +152,6 @@ class Benchmark(Plugin):
             resultsToSave = json.dumps(performanceResults, indent=4)
             log.debug(resultsToSave)
 
-            # Form results to post
-            performanceResultsPost = []
-
-            # Adapt names
-            testRemoveReg = re.compile(re.escape('test'), re.IGNORECASE)
-
-            for performanceResult in performanceResults:
-                tmpResult = {}
-                tmpResult['name'] = testRemoveReg.sub('', performanceResult['title']).upper()
-                tmpResult['class'] = testRemoveReg.sub('', performanceResult['class'])
-                tmpResult['label'] = 'Python ' + str(sys.version_info[0]) + '.' + str(sys.version_info[1]) + '.' + str(sys.version_info[2])
-                tmpResult['time'] = int(time.time())
-
-                tmpResult['report'] = {}
-                tmpResult['report'] = performanceResult
-
-                performanceResultsPost.append(tmpResult)
-
-            # TODO:
-            # Get path from params
             dir = 'reports/'
 
             if not os.path.exists(dir):
