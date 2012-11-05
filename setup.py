@@ -13,7 +13,7 @@ from setuptools import setup
 
 setup(
     name='nose-benchmark',
-    version='0.9',
+    version='0.9.1',
     author='Nikita Basalaev',
     author_email = 'nikita@mail.by',
     description = 'Benchmark nose plugin',

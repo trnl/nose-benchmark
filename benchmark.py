@@ -62,9 +62,21 @@ def invoker(object, fname):
     fields = filter(lambda item: item.startswith('ru_'), dir(rusage_after))
     x = dict([(field, getattr(rusage_after, field)-getattr(rusage_before, field)) for field in fields])
     x['ru_rtime'] = real_after - real_before
-    return x                      
+    return x     
+    
+def estimate_iterations(fn, object, estimated_time):
+    object.iterations=1
+    rusage = invoker(object,fn.__name__)
+    attempts = 0;
+    while rusage['ru_rtime'] < estimated_time and attempts < 10:
+        attempts += 1
+        object.iterations *= int(math.ceil(estimated_time / rusage['ru_rtime'])) 
+        print "t: %f, i:%d" % (rusage['ru_rtime'], object.iterations)
+        rusage = invoker(object,fn.__name__)
+    print "Estimated iterations: %d" % object.iterations
+    
 
-def benchmark(rounds=10, warmupRounds=5, threads=1):
+def benchmark(rounds=5, warmupRounds=2, threads=1, estimated_time=5):
     """
     Decorator, that marks test to be executed 'rounds'
     times using number of threads specified in 'threads'.
@@ -79,6 +91,7 @@ def benchmark(rounds=10, warmupRounds=5, threads=1):
             methodName = fn.__name__
             
             # here will be self-calibration
+            estimate_iterations(fn,self,estimated_time)
             
             promises = []
             
