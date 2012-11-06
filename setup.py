@@ -10,7 +10,7 @@ except ImportError:
 
 setup(
     name='nose-benchmark',
-    version='0.9.1',
+    version='0.9.2',
     author='Nikita Basalaev',
     author_email = 'nikita@mail.by',
     description = 'Benchmark nose plugin',
