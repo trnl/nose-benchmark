@@ -41,6 +41,12 @@ log = logging.getLogger('nose.plugins.benchmark')
 
 measurements = []
 
+def uncapitalize(s):
+   if len(s) == 0:
+      return s
+   else:
+      return s[0].lower() + s[1:]
+
 def info(title):
     log.debug('Test name:' + title)
     log.debug('Parent process:' + str(os.getppid()))
@@ -75,6 +81,8 @@ def estimate_iterations(fn, object, estimated_time):
         rusage = invoker(object,fn.__name__)
     log.info("Estimated iterations: %d" % object.iterations)
     
+    
+    
 
 def benchmark(rounds=5, warmupRounds=2, threads=1, estimated_time=5):
     """
@@ -108,8 +116,8 @@ def benchmark(rounds=5, warmupRounds=2, threads=1, estimated_time=5):
                 # Get the measurements returned by invoker function
                 ruMeasurements.append(promise.get())
 
-            oneTestMeasurements['title'] = methodName
-            oneTestMeasurements['class'] = className
+            oneTestMeasurements['title'] = uncapitalize(methodName[4:])
+            oneTestMeasurements['class'] = className[4:]
             oneTestMeasurements['results'] = ruMeasurements
             oneTestMeasurements['iterations'] = self.iterations            
 
