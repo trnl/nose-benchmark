@@ -4,12 +4,9 @@ Benchmark plugin.
 
 """
 try:
-    import ez_setup
-    ez_setup.use_setuptools()
+    from setuptools import setup
 except ImportError:
-    pass
-
-from setuptools import setup
+    from distutils.core import setup
 
 setup(
     name='nose-benchmark',
