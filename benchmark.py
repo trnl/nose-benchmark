@@ -71,9 +71,9 @@ def estimate_iterations(fn, object, estimated_time):
     while rusage['ru_rtime'] < estimated_time and attempts < 10:
         attempts += 1
         object.iterations *= int(math.ceil(estimated_time / rusage['ru_rtime'])) 
-        print "t: %f, i:%d" % (rusage['ru_rtime'], object.iterations)
+        log.debug("t: %f, i:%d" % (rusage['ru_rtime'], object.iterations))
         rusage = invoker(object,fn.__name__)
-    print "Estimated iterations: %d" % object.iterations
+    log.info("Estimated iterations: %d" % object.iterations)
     
 
 def benchmark(rounds=5, warmupRounds=2, threads=1, estimated_time=5):
@@ -111,6 +111,7 @@ def benchmark(rounds=5, warmupRounds=2, threads=1, estimated_time=5):
             oneTestMeasurements['title'] = methodName
             oneTestMeasurements['class'] = className
             oneTestMeasurements['results'] = ruMeasurements
+            oneTestMeasurements['iterations'] = self.iterations            
 
             measurements.append(oneTestMeasurements)
 
@@ -141,7 +142,7 @@ class Benchmark(Plugin):
 
         for i in range(len(measurements)):
             rounds = len(measurements[i]['results'])
-            iterations = 10
+            iterations = measurements[i]['iterations']
             
             averages = {}
             for field in measurements[i]['results'][0]:
@@ -151,10 +152,18 @@ class Benchmark(Plugin):
             performanceResult['title'] = measurements[i]['title']
             performanceResult['class'] = measurements[i]['class']
             performanceResult['rounds'] = rounds
+            performanceResult['iterations'] = iterations            
             performanceResult['timeReal'] = averages['ru_rtime']
             performanceResult['timeUser'] = averages['ru_utime']
-            performanceResult['opsReal'] = iterations / performanceResult['timeReal'] if performanceResult['timeReal']>0 else 0
-            performanceResult['opsUser'] = iterations / performanceResult['timeUser'] if performanceResult['timeUser']>0 else 0            
+            if performanceResult['timeReal'] > 0:
+                performanceResult['opsReal'] = iterations / performanceResult['timeReal']
+            else:
+                performanceResult['opsReal'] = 0
+            
+            if performanceResult['timeUser'] > 0:
+                performanceResult['opsUser'] = iterations / performanceResult['timeUser']
+            else:
+                performanceResult['opsUser'] = 0
 
             performanceResults.append(performanceResult)
 
