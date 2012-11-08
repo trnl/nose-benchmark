@@ -55,7 +55,7 @@ def info(title):
 
 def invoker(object, fname):
     info(fname)
-    rusage_mode = resource.RUSAGE_CHILDREN
+    rusage_mode = resource.RUSAGE_SELF
     rusage_before = resource.getrusage(rusage_mode)
     real_before = time.time()
     
@@ -66,7 +66,7 @@ def invoker(object, fname):
     real_after = time.time()
     
     fields = filter(lambda item: item.startswith('ru_'), dir(rusage_after))
-    x = dict([(field, getattr(rusage_after, field)-getattr(rusage_before, field)) for field in fields])
+    x = dict([(field, getattr(rusage_after, field)-getattr(rusage_before, field)) for field in fields])   
     x['ru_rtime'] = real_after - real_before
     return x     
     
@@ -79,7 +79,7 @@ def estimate_iterations(fn, object, estimated_time):
         object.iterations *= int(math.ceil(estimated_time / rusage['ru_rtime'])) 
         log.debug("t: %f, i:%d" % (rusage['ru_rtime'], object.iterations))
         rusage = invoker(object,fn.__name__)
-    log.info("Estimated iterations: %d" % object.iterations)
+    log.info("estimated iterations: %d" % object.iterations)
     
     
     
@@ -148,17 +148,17 @@ class Benchmark(Plugin):
         """
         performanceResults = []
 
-        for i in range(len(measurements)):
-            rounds = len(measurements[i]['results'])
-            iterations = measurements[i]['iterations']
+        for m in measurements:
+            rounds = len(m['results'])
+            iterations = m['iterations']
             
             averages = {}
-            for field in measurements[i]['results'][0]:
-              averages[field] = sum([x[field] for x in measurements[i]['results']]) / rounds
+            for field in m['results'][0]:
+              averages[field] = sum([x[field] for x in m['results']]) / rounds               
             
             performanceResult = dict(averages)
-            performanceResult['title'] = measurements[i]['title']
-            performanceResult['class'] = measurements[i]['class']
+            performanceResult['title'] = m['title']
+            performanceResult['class'] = m['class']
             performanceResult['rounds'] = rounds
             performanceResult['iterations'] = iterations            
             performanceResult['timeReal'] = averages['ru_rtime']
@@ -171,7 +171,7 @@ class Benchmark(Plugin):
             if performanceResult['timeUser'] > 0:
                 performanceResult['opsUser'] = iterations / performanceResult['timeUser']
             else:
-                performanceResult['opsUser'] = 0
+                performanceResult['opsUser'] = 0                
 
             performanceResults.append(performanceResult)
 
